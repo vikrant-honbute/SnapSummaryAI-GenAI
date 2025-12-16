@@ -1,0 +1,31 @@
+name: Deploy to Hugging Face Space
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+          lfs: true
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+
+      - name: Add Hugging Face remote
+        run: |
+          git remote add hf https://viki77:${{ secrets.HF_TOKEN }}@huggingface.co/spaces/viki77/SnapSummaryAI
+
+      - name: Push to Hugging Face (force)
+        run: |
+          git push hf main --force
