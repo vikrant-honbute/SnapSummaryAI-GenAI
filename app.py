@@ -5,7 +5,7 @@ from langchain_classic.chains.summarize import load_summarize_chain
 from langchain_community.document_loaders import YoutubeLoader, UnstructuredURLLoader
 import urllib.error
 
-# Streamlit APP
+# Streamlit App
 st.set_page_config(page_title="SnapSummaryAI — YouTube & Web Summarizer", page_icon="🦜")
 st.title("🔗📝 SnapSummaryAI — YouTube & Web Summarizer")
 st.subheader("Summarize URL")
