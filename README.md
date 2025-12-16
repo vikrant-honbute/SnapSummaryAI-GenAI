@@ -8,6 +8,7 @@ app_file: src/app.py
 pinned: false
 ---
 
+
 # SnapSummaryAI – YouTube & Web Summarizer 🚀
 
 SnapSummaryAI is a lightweight Generative AI-powered summarization app that extracts and summarizes content from YouTube videos and web URLs into concise, readable summaries using Groq LLMs and LangChain.  
