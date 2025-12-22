@@ -41,7 +41,7 @@ Built with Streamlit, it is designed for fast inference, clean UX, and easy depl
 
 ## 📂 Project Structure
 
-SnapSummaryAI-GenAI/  
+SnapSummaryAI-GenAI
 │  
 ├── app.py                Main Streamlit application  
 ├── requirements.txt      Project dependencies  
