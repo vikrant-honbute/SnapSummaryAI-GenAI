@@ -16,6 +16,13 @@ Built with Streamlit, it is designed for fast inference, clean UX, and easy depl
 
 ---
 
+## 🚀 Live Demo
+
+Try the app here:  
+👉 **https://huggingface.co/spaces/viki77/SnapSummaryAI**
+
+---
+
 ## ✨ Features
 
 - URL-based summarization  
