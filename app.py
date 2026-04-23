@@ -1,10 +1,20 @@
-import validators, streamlit as st
+import os
+from urllib.parse import parse_qs, urlparse
+
+import certifi
+import streamlit as st
+import validators
+from langchain_classic.chains.summarize import load_summarize_chain
+from langchain_community.document_loaders import UnstructuredURLLoader
+from langchain_core.documents import Document
 from langchain_core.prompts import PromptTemplate
 from langchain_groq import ChatGroq
-from langchain_classic.chains.summarize import load_summarize_chain
-from langchain_community.document_loaders import YoutubeLoader, UnstructuredURLLoader
-import urllib.error
-from requests.exceptions import RequestException, SSLError
+from requests.exceptions import RequestException
+from youtube_transcript_api import YouTubeTranscriptApi
+from yt_dlp import YoutubeDL
+
+os.environ.setdefault("SSL_CERT_FILE", certifi.where())
+os.environ.setdefault("REQUESTS_CA_BUNDLE", certifi.where())
 
 # Streamlit App
 st.set_page_config(page_title="SnapSummaryAI — YouTube & Web Summarizer", page_icon="🦜")
@@ -28,6 +38,25 @@ def is_youtube_url(url: str) -> bool:
     return "youtube.com" in url or "youtu.be" in url
 
 
+def extract_video_id(url: str) -> str | None:
+    parsed_url = urlparse(url)
+    host = (parsed_url.hostname or "").lower()
+
+    if host in {"youtu.be", "www.youtu.be"}:
+        return parsed_url.path.strip("/") or None
+
+    if "youtube.com" in host:
+        if parsed_url.path == "/watch":
+            return parse_qs(parsed_url.query).get("v", [None])[0]
+
+        if parsed_url.path.startswith("/shorts/") or parsed_url.path.startswith("/embed/"):
+            path_parts = [part for part in parsed_url.path.split("/") if part]
+            if len(path_parts) >= 2:
+                return path_parts[1]
+
+    return None
+
+
 def build_web_loader(url: str) -> UnstructuredURLLoader:
     return UnstructuredURLLoader(
         urls=[url],
@@ -40,6 +69,61 @@ def build_web_loader(url: str) -> UnstructuredURLLoader:
             )
         },
     )
+
+
+def load_youtube_docs(url: str) -> list[Document]:
+    video_id = extract_video_id(url)
+    if not video_id:
+        raise ValueError("Could not parse YouTube video id from URL.")
+
+    transcript = None
+    try:
+        transcript = YouTubeTranscriptApi.get_transcript(video_id, languages=["en", "en-US"])
+    except Exception:
+        try:
+            transcript = YouTubeTranscriptApi.get_transcript(video_id)
+        except Exception:
+            st.warning(
+                "YouTube transcript fetch failed (often network/IP restriction). "
+                "Trying video metadata fallback..."
+            )
+
+    if transcript:
+        transcript_text = " ".join(item.get("text", "") for item in transcript).strip()
+        if transcript_text:
+            return [
+                Document(
+                    page_content=transcript_text,
+                    metadata={"source": url, "kind": "transcript"},
+                )
+            ]
+
+    try:
+        with YoutubeDL(
+            {
+                "quiet": True,
+                "skip_download": True,
+                "noplaylist": True,
+                "socket_timeout": 20,
+            }
+        ) as ydl:
+            video_info = ydl.extract_info(url, download=False)
+    except Exception as exc:
+        raise RuntimeError(f"YouTube transcript and metadata fetch both failed: {exc}") from exc
+
+    title = (video_info.get("title") or "").strip()
+    description = (video_info.get("description") or "").strip()
+    fallback_text = f"Title: {title}\n\nDescription:\n{description}".strip()
+
+    if fallback_text.replace("Title:", "").replace("Description:", "").strip():
+        return [
+            Document(
+                page_content=fallback_text,
+                metadata={"source": url, "kind": "metadata"},
+            )
+        ]
+
+    raise RuntimeError("No text could be extracted from this YouTube URL.")
 
 if st.button("Summarize the Content from YT or Website"):
     # Validate inputs
@@ -59,42 +143,20 @@ if st.button("Summarize the Content from YT or Website"):
             is_youtube = is_youtube_url(generic_url)
             try:
                 if is_youtube:
-                    loader = YoutubeLoader.from_youtube_url(
-                        generic_url,
-                        add_video_info=False
-                    )
+                    docs = load_youtube_docs(generic_url)
                 else:
-                    loader = build_web_loader(generic_url)
-
-                docs = loader.load()
-            except SSLError:
-                if is_youtube:
-                    st.warning(
-                        "YouTube transcript fetch failed due to an SSL/TLS issue. "
-                        "Trying webpage-text fallback..."
-                    )
-                    try:
-                        docs = build_web_loader(generic_url).load()
-                    except Exception:
-                        st.error(
-                            "Could not reach YouTube from this environment due to SSL/network restrictions. "
-                            "Please retry later or try a non-YouTube URL."
-                        )
-                        st.stop()
-                else:
-                    st.error("SSL/network issue while loading the URL. Please try again.")
-                    st.stop()
-            except urllib.error.HTTPError:
-                st.error(
-                    "YouTube returned a 400 Bad Request. "
-                    "Try a different video URL (non-private, non-short)."
-                )
-                st.stop()
+                    docs = build_web_loader(generic_url).load()
             except RequestException:
                 st.error("Network error while loading the URL. Please try again.")
                 st.stop()
             except Exception as exc:
-                st.error(f"Could not load content from this URL. Details: {exc}")
+                if is_youtube:
+                    st.error(
+                        "Could not extract YouTube transcript or metadata in this environment. "
+                        f"Details: {exc}"
+                    )
+                else:
+                    st.error(f"Could not load content from this URL. Details: {exc}")
                 st.stop()
 
             if not docs:
