@@ -4,7 +4,6 @@ from urllib.parse import parse_qs, urlparse
 import certifi
 import streamlit as st
 import validators
-from langchain_classic.chains.summarize import load_summarize_chain
 from langchain_community.document_loaders import UnstructuredURLLoader
 from langchain_core.documents import Document
 from langchain_core.prompts import PromptTemplate
@@ -163,14 +162,15 @@ if st.button("Summarize the Content from YT or Website"):
                 st.error("No content could be extracted from this URL.")
                 st.stop()
 
-            # Summarization chain
-            chain = load_summarize_chain(
-                llm,
-                chain_type="stuff",
-                prompt=prompt
-            )
+            combined_text = "\n\n".join(doc.page_content for doc in docs if doc.page_content).strip()
+            if not combined_text:
+                st.error("Extracted content is empty after processing.")
+                st.stop()
+
+            final_prompt = prompt.format(text=combined_text)
             try:
-                output_summary = chain.run(docs)
+                response = llm.invoke(final_prompt)
+                output_summary = response.content if hasattr(response, "content") else str(response)
                 st.write(output_summary)
             except Exception as exc:
                 st.error(f"Failed to summarize content. Details: {exc}")
